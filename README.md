@@ -42,12 +42,55 @@ npm run dev                        # http://localhost:3000
 Klucz API: https://console.anthropic.com/ → Settings → API Keys.
 Bez klucza newsy działają, generowanie postów zwróci błąd.
 
+## Dostęp tylko dla Ciebie (hasło + 2FA)
+
+Apka jest chroniona globalnym proxy Next.js 16 (`proxy.ts`, dawniej `middleware.ts`).
+Logowanie to **dwa czynniki**: hasło (coś, co wiesz) + 6-cyfrowy kod TOTP z
+aplikacji typu Google Authenticator (coś, co masz). Ochrona stoi PRZED UI i przed
+każdym `/api/*`, więc bez zalogowania nikt nie dotknie klucza Anthropic ani Buffera.
+
+Jak to działa:
+
+- wejście bez sesji → przekierowanie na `/login` (dla `/api/*` → `401`),
+- na `/login` podajesz hasło + kod 2FA → `/api/login` weryfikuje oba i ustawia
+  podpisane ciasteczko sesji (HttpOnly, ważne 30 dni),
+- `/api/logout` kasuje sesję.
+
+Zmienne środowiskowe:
+
+- `AUTH_PASSWORD` — hasło (najlepiej długie, losowe),
+- `TOTP_SECRET` — sekret base32 sparowany z Authenticatorem,
+- `SESSION_SECRET` — losowy klucz do podpisu ciasteczek.
+
+Zachowanie bez konfiguracji: na produkcji apka zwraca **503** (fail-closed, nie
+wystawi się publicznie); lokalnie (`npm run dev`) wpuszcza, by nie męczyć logowaniem.
+
+### Wygenerowanie sekretów 2FA
+
+```bash
+node scripts/totp-setup.mjs        # wypisze TOTP_SECRET, SESSION_SECRET, otpauth URI
+```
+
+W Google Authenticator: „+" → **Enter a setup key** → wklej `TOTP_SECRET` (Time based).
+`AUTH_PASSWORD` wymyślasz sam, np. `openssl rand -base64 24`.
+
 ## Deploy (Vercel)
 
 1. Wypchnij repo na GitHub.
-2. Zaimportuj w Vercel.
-3. Dodaj zmienną środowiskową `ANTHROPIC_API_KEY` (Production + Preview).
-4. Deploy.
+2. Zaimportuj projekt w Vercel (Framework: Next.js — wykryje sam).
+3. W **Settings → Environment Variables** dodaj (Production + Preview):
+   - `AUTH_PASSWORD`, `TOTP_SECRET`, `SESSION_SECRET` — logowanie (patrz wyżej),
+   - `ANTHROPIC_API_KEY` — klucz do generowania postów,
+   - opcjonalnie `BUFFER_API_KEY`, `BUFFER_CHANNEL_ID`.
+4. **Deploy**. Dostaniesz adres `https://twoja-apka.vercel.app`.
+
+## Na telefonie
+
+1. Otwórz adres z Vercela w przeglądarce telefonu.
+2. Na ekranie logowania podaj hasło + kod 2FA z Authenticatora. Hasło możesz zapisać
+   w menedżerze haseł; sesja trzyma się 30 dni, więc nie logujesz się za każdym razem.
+3. „Dodaj do ekranu głównego" (Safari: Udostępnij → Dodaj do ekranu początkowego;
+   Chrome: ⋮ → Dodaj do ekranu głównego). Apka odpali się pełnoekranowo, jak natywna.
 
 ## Źródła
 
