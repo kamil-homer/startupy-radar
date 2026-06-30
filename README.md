@@ -42,30 +42,44 @@ npm run dev                        # http://localhost:3000
 Klucz API: https://console.anthropic.com/ → Settings → API Keys.
 Bez klucza newsy działają, generowanie postów zwróci błąd.
 
-## Dostęp tylko dla Ciebie (Basic Auth)
+## Dostęp tylko dla Ciebie (hasło + 2FA)
 
-Apka jest chroniona globalnym proxy Next.js 16 (`proxy.ts`, dawniej `middleware.ts`) — przeglądarka pyta
-o login i hasło PRZED wejściem do UI i przed każdym `/api/*`. Bez hasła nikt nie
-dotknie Twojego klucza Anthropic ani Buffera.
+Apka jest chroniona globalnym proxy Next.js 16 (`proxy.ts`, dawniej `middleware.ts`).
+Logowanie to **dwa czynniki**: hasło (coś, co wiesz) + 6-cyfrowy kod TOTP z
+aplikacji typu Google Authenticator (coś, co masz). Ochrona stoi PRZED UI i przed
+każdym `/api/*`, więc bez zalogowania nikt nie dotknie klucza Anthropic ani Buffera.
 
-Ustaw zmienne:
+Jak to działa:
 
-- `BASIC_AUTH_USER` — login
-- `BASIC_AUTH_PASSWORD` — długie, losowe hasło
+- wejście bez sesji → przekierowanie na `/login` (dla `/api/*` → `401`),
+- na `/login` podajesz hasło + kod 2FA → `/api/login` weryfikuje oba i ustawia
+  podpisane ciasteczko sesji (HttpOnly, ważne 30 dni),
+- `/api/logout` kasuje sesję.
 
-Zachowanie:
+Zmienne środowiskowe:
 
-- oba ustawione → wymagane logowanie,
-- na produkcji bez nich → apka zwraca **503** (fail-closed, nie wystawi się publicznie),
-- lokalnie bez nich → wpuszcza (wygoda przy `npm run dev`).
+- `AUTH_PASSWORD` — hasło (najlepiej długie, losowe),
+- `TOTP_SECRET` — sekret base32 sparowany z Authenticatorem,
+- `SESSION_SECRET` — losowy klucz do podpisu ciasteczek.
+
+Zachowanie bez konfiguracji: na produkcji apka zwraca **503** (fail-closed, nie
+wystawi się publicznie); lokalnie (`npm run dev`) wpuszcza, by nie męczyć logowaniem.
+
+### Wygenerowanie sekretów 2FA
+
+```bash
+node scripts/totp-setup.mjs        # wypisze TOTP_SECRET, SESSION_SECRET, otpauth URI
+```
+
+W Google Authenticator: „+" → **Enter a setup key** → wklej `TOTP_SECRET` (Time based).
+`AUTH_PASSWORD` wymyślasz sam, np. `openssl rand -base64 24`.
 
 ## Deploy (Vercel)
 
 1. Wypchnij repo na GitHub.
 2. Zaimportuj projekt w Vercel (Framework: Next.js — wykryje sam).
 3. W **Settings → Environment Variables** dodaj (Production + Preview):
-   - `BASIC_AUTH_USER` — Twój login,
-   - `BASIC_AUTH_PASSWORD` — długie hasło,
+   - `AUTH_PASSWORD`, `TOTP_SECRET`, `SESSION_SECRET` — logowanie (patrz wyżej),
    - `ANTHROPIC_API_KEY` — klucz do generowania postów,
    - opcjonalnie `BUFFER_API_KEY`, `BUFFER_CHANNEL_ID`.
 4. **Deploy**. Dostaniesz adres `https://twoja-apka.vercel.app`.
@@ -73,7 +87,8 @@ Zachowanie:
 ## Na telefonie
 
 1. Otwórz adres z Vercela w przeglądarce telefonu.
-2. Podaj login i hasło (Basic Auth) — możesz je zapisać w menedżerze haseł.
+2. Na ekranie logowania podaj hasło + kod 2FA z Authenticatora. Hasło możesz zapisać
+   w menedżerze haseł; sesja trzyma się 30 dni, więc nie logujesz się za każdym razem.
 3. „Dodaj do ekranu głównego" (Safari: Udostępnij → Dodaj do ekranu początkowego;
    Chrome: ⋮ → Dodaj do ekranu głównego). Apka odpali się pełnoekranowo, jak natywna.
 

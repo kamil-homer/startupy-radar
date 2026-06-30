@@ -1,91 +1,78 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 /**
- * Globalna ochrona dostępu (HTTP Basic Auth) — Next.js Proxy.
+ * Globalna ochrona dostępu (hasło + 2FA TOTP) — Next.js Proxy.
  *
  * W Next.js 16 dawne `middleware.ts` zostało przemianowane na `proxy.ts`
  * (funkcja `proxy`), bo to warstwa proxy z granicą sieciową przed aplikacją.
- * Runtime: Node.js (Edge nie jest tu wspierany w 16) — używane API są przenośne.
+ * Runtime: Node.js.
  *
- * Działa PRZED każdym żądaniem — także przed endpointami /api/*, więc nikt
- * bez loginu i hasła nie dotknie Twojego klucza Anthropic ani Buffera.
+ * Przepływ:
+ *  - logowanie odbywa się na /login (formularz: hasło + 6-cyfrowy kod 2FA),
+ *    które weryfikuje /api/login i ustawia podpisane ciasteczko sesji,
+ *  - proxy przepuszcza żądanie tylko z ważną sesją; inaczej przekierowuje na
+ *    /login (dla stron) albo zwraca 401 (dla /api/*).
  *
- * Konfiguracja przez zmienne środowiskowe:
- *   BASIC_AUTH_USER     — login
- *   BASIC_AUTH_PASSWORD — hasło
+ * Konfiguracja (env):
+ *   AUTH_PASSWORD   — hasło (najlepiej długie, losowe),
+ *   TOTP_SECRET     — sekret base32 sparowany z Google Authenticator,
+ *   SESSION_SECRET  — losowy klucz do podpisu ciasteczek sesji.
  *
- * Zasady:
- *  - Jeśli oba ustawione → wymagamy logowania.
- *  - Jeśli NIE ustawione, a apka działa na produkcji → blokujemy WSZYSTKO
- *    (fail-closed), żeby przez przypadek nie wystawić apki publicznie.
- *  - Lokalnie (dev) bez ustawionych zmiennych → wpuszczamy, żeby nie męczyć
- *    się logowaniem przy `npm run dev`.
+ * Fail-closed: na produkcji bez kompletu zmiennych blokujemy wszystko (503),
+ * żeby przez przypadek nie wystawić apki publicznie. Lokalnie (dev) bez nich
+ * wpuszczamy, by nie męczyć logowaniem przy `npm run dev`.
  */
 
-const USER = process.env.BASIC_AUTH_USER;
-const PASSWORD = process.env.BASIC_AUTH_PASSWORD;
+const PASSWORD = process.env.AUTH_PASSWORD;
+const TOTP_SECRET = process.env.TOTP_SECRET;
+const SESSION_SECRET = process.env.SESSION_SECRET;
 
-// Porównanie odporne na proste ataki czasowe (długość + XOR po znakach).
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
-}
+// Ścieżki dostępne bez sesji (inaczej nie dałoby się zalogować).
+const PUBLIC_PATHS = new Set(["/login", "/api/login", "/api/logout"]);
 
-function unauthorized(): NextResponse {
-  return new NextResponse("Authentication required.", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": 'Basic realm="Startup Radar", charset="UTF-8"',
-    },
-  });
+function isConfigured(): boolean {
+  return Boolean(PASSWORD && TOTP_SECRET && SESSION_SECRET);
 }
 
 export function proxy(req: NextRequest): NextResponse {
-  // Brak skonfigurowanych danych logowania.
-  if (!USER || !PASSWORD) {
-    if (process.env.NODE_ENV === "production") {
-      // Fail-closed: nie wystawiaj apki publicznie przez przypadek.
-      return new NextResponse(
-        "Dostęp nieskonfigurowany. Ustaw zmienne BASIC_AUTH_USER i BASIC_AUTH_PASSWORD.",
-        { status: 503 },
-      );
-    }
-    // Dev bez konfiguracji — wpuszczamy.
+  const { pathname } = req.nextUrl;
+
+  if (PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();
   }
 
-  const header = req.headers.get("authorization");
-  if (!header || !header.startsWith("Basic ")) {
-    return unauthorized();
+  if (!isConfigured()) {
+    if (process.env.NODE_ENV === "production") {
+      return new NextResponse(
+        "Dostęp nieskonfigurowany. Ustaw AUTH_PASSWORD, TOTP_SECRET i SESSION_SECRET.",
+        { status: 503 },
+      );
+    }
+    return NextResponse.next();
   }
 
-  let decoded: string;
-  try {
-    decoded = atob(header.slice("Basic ".length));
-  } catch {
-    return unauthorized();
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  if (verifySession(token, SESSION_SECRET as string)) {
+    return NextResponse.next();
   }
 
-  // Format: "user:password" (hasło może zawierać dwukropki).
-  const sep = decoded.indexOf(":");
-  if (sep === -1) return unauthorized();
-  const user = decoded.slice(0, sep);
-  const password = decoded.slice(sep + 1);
+  // Brak ważnej sesji.
+  if (pathname.startsWith("/api/")) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
 
-  const ok = safeEqual(user, USER) && safeEqual(password, PASSWORD);
-  if (!ok) return unauthorized();
-
-  return NextResponse.next();
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  url.searchParams.set("next", pathname);
+  return NextResponse.redirect(url);
 }
 
 export const config = {
   /**
    * Chronimy wszystko OPRÓCZ statycznych zasobów Next.js i ikon — dzięki temu
-   * strona logowania ładuje style/fonty, ale treść i API są za hasłem.
+   * strona logowania ładuje style/fonty, ale treść i API są za logowaniem.
    */
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
