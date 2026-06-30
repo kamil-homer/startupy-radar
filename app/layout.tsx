@@ -1,10 +1,22 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Trójmiasto Startup Radar",
   description:
     "Lokalne, polskie i globalne newsy startupowe w jednym miejscu — z gotowym pomysłem na post LinkedIn jednym kliknięciem.",
+  // Pozwala dodać apkę „do ekranu głównego" na telefonie i odpalać ją
+  // pełnoekranowo, jak natywną aplikację.
+  appleWebApp: {
+    capable: true,
+    title: "Startup Radar",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
