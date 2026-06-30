@@ -93,7 +93,7 @@ export async function POST(req: Request) {
         | { __typename: "MutationError"; message: string };
     }>(
       apiKey,
-      `mutation($text: String!, $channelId: String!) {
+      `mutation($text: String!, $channelId: ChannelId!) {
         createPost(input:{
           text: $text,
           channelId: $channelId,
