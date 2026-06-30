@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Globalna ochrona dostępu (HTTP Basic Auth).
+ * Globalna ochrona dostępu (HTTP Basic Auth) — Next.js Proxy.
+ *
+ * W Next.js 16 dawne `middleware.ts` zostało przemianowane na `proxy.ts`
+ * (funkcja `proxy`), bo to warstwa proxy z granicą sieciową przed aplikacją.
+ * Runtime: Node.js (Edge nie jest tu wspierany w 16) — używane API są przenośne.
  *
  * Działa PRZED każdym żądaniem — także przed endpointami /api/*, więc nikt
  * bez loginu i hasła nie dotknie Twojego klucza Anthropic ani Buffera.
@@ -40,7 +44,7 @@ function unauthorized(): NextResponse {
   });
 }
 
-export function middleware(req: NextRequest): NextResponse {
+export function proxy(req: NextRequest): NextResponse {
   // Brak skonfigurowanych danych logowania.
   if (!USER || !PASSWORD) {
     if (process.env.NODE_ENV === "production") {

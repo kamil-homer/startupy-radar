@@ -44,7 +44,7 @@ Bez klucza newsy działają, generowanie postów zwróci błąd.
 
 ## Dostęp tylko dla Ciebie (Basic Auth)
 
-Apka jest chroniona globalnym middleware (`middleware.ts`) — przeglądarka pyta
+Apka jest chroniona globalnym proxy Next.js 16 (`proxy.ts`, dawniej `middleware.ts`) — przeglądarka pyta
 o login i hasło PRZED wejściem do UI i przed każdym `/api/*`. Bez hasła nikt nie
 dotknie Twojego klucza Anthropic ani Buffera.
 
