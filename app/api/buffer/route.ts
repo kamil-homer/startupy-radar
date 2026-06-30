@@ -52,7 +52,7 @@ export async function GET() {
     for (const org of orgs) {
       const data = await bufferGraphQL<{ channels: Channel[] }>(
         apiKey,
-        `query($id: String!) { channels(input:{ organizationId:$id }) { id name service } }`,
+        `query($id: OrganizationId!) { channels(input:{ organizationId:$id }) { id name service } }`,
         { id: org.id }
       );
       out.push({ org: org.name, channels: data.channels ?? [] });
