@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CAT_LABEL, type Category, type NewsItem } from "@/lib/feeds";
+import { DEFAULT_CONTEXT } from "@/lib/context";
 
 type Filter = "all" | Category;
 
 const USED_KEY = "startupy-radar:used";
+const CONTEXT_KEY = "startupy-radar:context";
 
 function relTime(dateStr: string): string {
   const d = new Date(dateStr);
@@ -25,6 +27,12 @@ interface TransState {
   error: string;
 }
 
+interface BufferState {
+  sending: boolean;
+  ok: boolean;
+  error: string;
+}
+
 export default function Page() {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
@@ -34,8 +42,12 @@ export default function Page() {
   const [scanTime, setScanTime] = useState("—");
   const [trans, setTrans] = useState<Record<string, TransState>>({});
   const [copied, setCopied] = useState<string | null>(null);
+  const [buffer, setBuffer] = useState<Record<string, BufferState>>({});
+  const [context, setContext] = useState(DEFAULT_CONTEXT);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [contextSaved, setContextSaved] = useState(false);
 
-  // load used set from localStorage once
+  // load used set + narrative memory from localStorage once
   useEffect(() => {
     try {
       const raw = localStorage.getItem(USED_KEY);
@@ -43,7 +55,32 @@ export default function Page() {
     } catch {
       /* ignore */
     }
+    try {
+      const ctx = localStorage.getItem(CONTEXT_KEY);
+      if (ctx !== null) setContext(ctx);
+    } catch {
+      /* ignore */
+    }
   }, []);
+
+  const saveContext = () => {
+    try {
+      localStorage.setItem(CONTEXT_KEY, context);
+      setContextSaved(true);
+      setTimeout(() => setContextSaved(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const resetContext = () => {
+    setContext(DEFAULT_CONTEXT);
+    try {
+      localStorage.setItem(CONTEXT_KEY, DEFAULT_CONTEXT);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const persistUsed = (next: Set<string>) => {
     try {
@@ -107,6 +144,7 @@ export default function Page() {
           cat: it.cat,
           snippet: it.snippet,
           link: it.link,
+          context,
         }),
       });
       const data = await res.json();
@@ -129,6 +167,25 @@ export default function Page() {
       setCopied(id);
       setTimeout(() => setCopied((c) => (c === id ? null : c)), 1500);
     });
+  };
+
+  const sendToBuffer = async (id: string, text: string) => {
+    setBuffer((b) => ({ ...b, [id]: { sending: true, ok: false, error: "" } }));
+    try {
+      const res = await fetch("/api/buffer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "nie udało się wysłać");
+      setBuffer((b) => ({ ...b, [id]: { sending: false, ok: true, error: "" } }));
+    } catch (e) {
+      setBuffer((b) => ({
+        ...b,
+        [id]: { sending: false, ok: false, error: (e as Error).message },
+      }));
+    }
   };
 
   const counts = {
@@ -179,6 +236,39 @@ export default function Page() {
             ↻ Skanuj ponownie
           </button>
         </div>
+      </div>
+
+      <div className="memory">
+        <button
+          className="memory-toggle"
+          onClick={() => setContextOpen((o) => !o)}
+          aria-expanded={contextOpen}
+        >
+          {contextOpen ? "▾" : "▸"} Pamięć narracji
+          <span className="memory-hint">— kontekst, którym karmię każdy generowany post</span>
+        </button>
+        {contextOpen && (
+          <div className="memory-body">
+            <textarea
+              className="memory-text"
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              spellCheck={false}
+              rows={14}
+            />
+            <div className="memory-actions">
+              <button className="gen-btn" onClick={saveContext}>
+                {contextSaved ? "zapisano ✓" : "zapisz pamięć"}
+              </button>
+              <button className="used-toggle" onClick={resetContext}>
+                przywróć domyślną
+              </button>
+              <span className="memory-hint">
+                Im konkretniej (firmy, ludzie, wątki) — tym mniej generyczne posty.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="tabs">
@@ -259,12 +349,30 @@ export default function Page() {
                           💡 pomysł na post — przejrzyj przed publikacją
                         </div>
                         <p className="transmission-text">{tr.text}</p>
-                        <button
-                          className="copy-btn"
-                          onClick={() => copyText(it.id, tr.text)}
-                        >
-                          {copied === it.id ? "skopiowano ✓" : "kopiuj"}
-                        </button>
+                        <div className="card-actions">
+                          <button
+                            className="copy-btn"
+                            onClick={() => copyText(it.id, tr.text)}
+                          >
+                            {copied === it.id ? "skopiowano ✓" : "kopiuj"}
+                          </button>
+                          <button
+                            className="gen-btn"
+                            onClick={() => sendToBuffer(it.id, tr.text)}
+                            disabled={buffer[it.id]?.sending || buffer[it.id]?.ok}
+                          >
+                            {buffer[it.id]?.ok
+                              ? "✓ draft w Buffer"
+                              : buffer[it.id]?.sending
+                                ? "⟳ wysyłam..."
+                                : "→ wyślij do Buffer"}
+                          </button>
+                        </div>
+                        {buffer[it.id]?.error && (
+                          <div className="transmission-label" style={{ marginTop: 8 }}>
+                            Buffer: {buffer[it.id].error}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
