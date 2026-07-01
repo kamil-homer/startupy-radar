@@ -10,7 +10,7 @@ serwera, więc nie ma już błędów CORS/408 z przeglądarki.
 
 - `app/page.tsx` — UI (client component), filtrowanie, oznaczanie „użyte" (localStorage).
 - `app/api/feeds/route.ts` — serwer pobiera i parsuje wszystkie feedy RSS/Atom, dedup + sort.
-- `app/api/generate/route.ts` — serwer woła Claude (`claude-sonnet-4-6`) kluczem z env.
+- `app/api/generate/route.ts` — serwer woła Claude (`claude-sonnet-5`) kluczem z env.
 - `app/api/buffer/route.ts` — wysyła post jako **draft** do Buffer (GraphQL API). `GET` listuje kanały.
 - `lib/feeds.ts` — lista źródeł + typy.
 - `legacy/` — oryginalny prototyp HTML (działał tylko w sandboxie Claude).

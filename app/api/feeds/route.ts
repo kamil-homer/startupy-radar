@@ -84,7 +84,8 @@ async function fetchFeed(feed: Feed): Promise<NewsItem[] | null> {
       nodes = Array.isArray(xml.feed.entry) ? xml.feed.entry : [xml.feed.entry];
     }
 
-    return nodes.slice(0, 12).map((node): NewsItem => {
+    const limit = feed.cat === "globalne" ? 15 : 12;
+    return nodes.slice(0, limit).map((node): NewsItem => {
       const title = stripHtml(text(node.title) || "(bez tytułu)");
       const link = isAtom
         ? atomLink(node.link)
