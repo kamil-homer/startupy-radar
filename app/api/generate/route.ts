@@ -6,32 +6,17 @@ import { DEFAULT_CONTEXT } from "@/lib/context";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const BASE_PROMPT = `Jesteś strategicznym architektem społeczności startupowej dla Kamila, lidera Startupy Trójmiasto (część ekosystemu Gdańsk Bay Tech). Piszesz POMYSŁ NA POST na LinkedIn na podstawie newsa.
+const SYSTEM_PROMPT = `Jesteś asystentem researchu dla Kamila, lidera Startupy Trójmiasto (część ekosystemu Gdańsk Bay Tech). NIE piszesz gotowego posta — pisaniem na LinkedIn zajmuje się osobny agent w jego Claude Project. Twoje zadanie: przygotować krótkie podsumowanie newsa, na podstawie którego Kamil szybko oceni, czy chce o tym pisać.
 
-Filozofia: Relacje > Transakcje. Sanktuarium Buildera — zero nachalnej sprzedaży, zero pustego networkingu. Gdański Lokalny Patriotyzm — gdy to pasuje, naturalnie łączysz news z Trójmiastem/Pomorzem/GBT, ale na siłę nie wciskasz. Energia i Konkret — krótko, dynamicznie, zero korpomowy (zero słów: synergia, asap, dedykowane rozwiązanie).
+Przygotuj:
+1. 2-4 punkty z najciekawszymi/najistotniejszymi faktami z newsa — konkret: liczby, nazwy, kwoty, daty. Priorytet dla kontrastów (przed/po, strata/zysk, prywatna/publiczna wycena) i nieoczywistych kątów — patrz PRZYKŁADY POSTÓW w PAMIĘCI NARRACJI, to wzorzec typu historii, który Kamila interesuje. Bez ocen, bez lania wody, bez frazesów.
+2. Opcjonalnie, tylko jeśli realnie pasuje do PAMIĘCI NARRACJI poniżej (wątki, wartości, przykłady postów) — jedno zdanie, czemu to może zainteresować Kamila. Nie ogranicza się to do newsów lokalnych z Trójmiasta — przykłady pokazują, że interesują go też uniwersalne historie founderskie. Jeśli nic nie pasuje, pomiń ten punkt. Nie zmyślaj powiązań, których nie ma w PAMIĘCI NARRACJI.
+3. Na końcu osobną linią przepisz dokładnie pole "Link" z danych newsa poniżej, bez zmian, w formacie: Link: <url>
 
-Styl: bezpośredni, autentyczny, pierwsza osoba. Max 1-2 emotki w całym poście (często zero). Hook w pierwszej linii — musi zaczepić w pierwszych ~200 znakach (przed "...zobacz więcej"); nie "Świetna wiadomość!", coś osobistego/zaskakującego/kontrariańskiego. Zakończ jednym konkretnym pytaniem (nie "co myślicie?"). Maks 2-3 trafne hashtagi.
-
-DŁUGOŚĆ: krótko i mocno. 40-90 słów, twardy limit ~650 znaków. Lepiej za krótko niż za długo. Tnij każde zdanie, które nie wnosi.
-
-ZAKAZANE (to brzmi jak generyczny LinkedIn / sztuczny insider — NIGDY tak nie pisz):
-- Udawane obserwacje o społeczności/ekosystemie, których nie wiesz: "Widzę, że wiele zespołów...", "Wiele firm w naszym ekosystemie...", "Coraz więcej founderów...". Jeśli czegoś realnie nie wiesz z PAMIĘCI NARRACJI — nie twierdź tego.
-- Wata i frazesy: "to może być game changer", "najlepszy stosunek X do Y", "to nie tylko news dla...".
-- Korpomowa: synergia, asap, dedykowane rozwiązanie.
-- Surowe URL-e w treści (zabijają zasięg LinkedIn). Źródło wspominaj tylko z nazwy ("jak donosi TechCrunch"), bez wklejania linku.
-
-Pisz konkret z własnego zdania/obserwacji, nie streszczaj newsa jak prasówka.
-
-Odpowiedz WYŁĄCZNIE gotowym tekstem postu po polsku, bez wstępu, bez cudzysłowów, bez komentarza meta.`;
-
-function buildSystemPrompt(context: string): string {
-  const ctx = context.trim();
-  if (!ctx) return BASE_PROMPT;
-  return `${BASE_PROMPT}
+Format: krótkie punkty (myślniki), po polsku. Bez wstępu, bez cudzysłowów, bez komentarza meta, bez hashtagów, bez emotek.
 
 # PAMIĘĆ NARRACJI (kontekst od Kamila — trzymaj się go ściśle, nie zmyślaj faktów spoza tej listy)
-${ctx}`;
-}
+${DEFAULT_CONTEXT.trim()}`;
 
 interface GenBody {
   title?: string;
@@ -39,7 +24,6 @@ interface GenBody {
   cat?: Category;
   snippet?: string;
   link?: string;
-  context?: string;
 }
 
 export async function POST(req: Request) {
@@ -58,11 +42,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Zły JSON." }, { status: 400 });
   }
 
-  const { title, source, cat, snippet, link, context } = body;
+  const { title, source, cat, snippet, link } = body;
   if (!title) {
     return NextResponse.json({ error: "Brak tytułu newsa." }, { status: 400 });
   }
-  const systemPrompt = buildSystemPrompt(context ?? DEFAULT_CONTEXT);
 
   const userPrompt = `News:
 Tytuł: ${title}
@@ -71,14 +54,14 @@ Kategoria: ${cat ? CAT_LABEL[cat] : ""}
 Opis: ${snippet || "(brak opisu, bazuj na tytule)"}
 Link: ${link ?? ""}
 
-Napisz na podstawie tego newsa pomysł na post LinkedIn dla Kamila.`;
+Przygotuj na podstawie tego newsa krótkie podsumowanie faktów dla Kamila (patrz instrukcje systemowe).`;
 
   try {
     const anthropic = new Anthropic({ apiKey });
     const msg = await anthropic.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1000,
-      system: systemPrompt,
+      system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });
     const text = msg.content

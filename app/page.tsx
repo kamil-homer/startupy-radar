@@ -2,12 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CAT_LABEL, type Category, type NewsItem } from "@/lib/feeds";
-import { DEFAULT_CONTEXT } from "@/lib/context";
 
 type Filter = "all" | Category;
 
 const USED_KEY = "startupy-radar:used";
-const CONTEXT_KEY = "startupy-radar:context";
 
 function relTime(dateStr: string): string {
   const d = new Date(dateStr);
@@ -43,11 +41,8 @@ export default function Page() {
   const [trans, setTrans] = useState<Record<string, TransState>>({});
   const [copied, setCopied] = useState<string | null>(null);
   const [buffer, setBuffer] = useState<Record<string, BufferState>>({});
-  const [context, setContext] = useState(DEFAULT_CONTEXT);
-  const [contextOpen, setContextOpen] = useState(false);
-  const [contextSaved, setContextSaved] = useState(false);
 
-  // load used set + narrative memory from localStorage once
+  // load used set from localStorage once
   useEffect(() => {
     try {
       const raw = localStorage.getItem(USED_KEY);
@@ -55,32 +50,7 @@ export default function Page() {
     } catch {
       /* ignore */
     }
-    try {
-      const ctx = localStorage.getItem(CONTEXT_KEY);
-      if (ctx !== null) setContext(ctx);
-    } catch {
-      /* ignore */
-    }
   }, []);
-
-  const saveContext = () => {
-    try {
-      localStorage.setItem(CONTEXT_KEY, context);
-      setContextSaved(true);
-      setTimeout(() => setContextSaved(false), 1500);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const resetContext = () => {
-    setContext(DEFAULT_CONTEXT);
-    try {
-      localStorage.setItem(CONTEXT_KEY, DEFAULT_CONTEXT);
-    } catch {
-      /* ignore */
-    }
-  };
 
   const persistUsed = (next: Set<string>) => {
     try {
@@ -144,7 +114,6 @@ export default function Page() {
           cat: it.cat,
           snippet: it.snippet,
           link: it.link,
-          context,
         }),
       });
       const data = await res.json();
@@ -215,8 +184,8 @@ export default function Page() {
           Startup Radar
         </h1>
         <p className="sub">
-          Lokalne, polskie i globalne newsy startupowe w jednym miejscu — z gotowym
-          pomysłem na post LinkedIn jednym kliknięciem.
+          Lokalne, polskie i globalne newsy startupowe w jednym miejscu — z szybkim
+          podsumowaniem faktów, żebyś ocenił, o czym warto napisać.
         </p>
         <div className="scan-row">
           <span>
@@ -236,39 +205,6 @@ export default function Page() {
             ↻ Skanuj ponownie
           </button>
         </div>
-      </div>
-
-      <div className="memory">
-        <button
-          className="memory-toggle"
-          onClick={() => setContextOpen((o) => !o)}
-          aria-expanded={contextOpen}
-        >
-          {contextOpen ? "▾" : "▸"} Pamięć narracji
-          <span className="memory-hint">— kontekst, którym karmię każdy generowany post</span>
-        </button>
-        {contextOpen && (
-          <div className="memory-body">
-            <textarea
-              className="memory-text"
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-              spellCheck={false}
-              rows={14}
-            />
-            <div className="memory-actions">
-              <button className="gen-btn" onClick={saveContext}>
-                {contextSaved ? "zapisano ✓" : "zapisz pamięć"}
-              </button>
-              <button className="used-toggle" onClick={resetContext}>
-                przywróć domyślną
-              </button>
-              <span className="memory-hint">
-                Im konkretniej (firmy, ludzie, wątki) — tym mniej generyczne posty.
-              </span>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="tabs">
@@ -323,7 +259,7 @@ export default function Page() {
                         onClick={() => generatePost(it)}
                         disabled={tr?.loading}
                       >
-                        {tr?.loading ? "⟳ namierzam..." : "💡 pomysł na post"}
+                        {tr?.loading ? "⟳ namierzam..." : "📋 podsumowanie"}
                       </button>
                       <button className="used-toggle" onClick={() => toggleUsed(it.id)}>
                         {isUsed ? "odznacz" : "oznacz jako użyte"}
@@ -334,7 +270,7 @@ export default function Page() {
                       <div className="transmission">
                         <div className="transmission-label">
                           <span className="pulse" />
-                          generuję pomysł...
+                          generuję podsumowanie...
                         </div>
                       </div>
                     )}
@@ -346,7 +282,7 @@ export default function Page() {
                     {tr?.text && (
                       <div className="transmission">
                         <div className="transmission-label">
-                          💡 pomysł na post — przejrzyj przed publikacją
+                          📋 podsumowanie — oceń, czy chcesz o tym pisać
                         </div>
                         <p className="transmission-text">{tr.text}</p>
                         <div className="card-actions">
